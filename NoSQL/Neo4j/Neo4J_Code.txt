@@ -1,0 +1,98 @@
+# 1. Stock Data
+
+// Create organization_stock_data
+LOAD CSV WITH HEADERS FROM 'file:///organization_stock_data.csv' AS row
+MERGE (stock:Stock {stockID: row.organization_stock_data_id})
+  ON CREATE SET stock.organization_id = row.organization_id, stock.date_id = row.date_id,stock.open = row.open,stock.high = row.high,stock.low = row.low,stock.close = row.close,stock.adj_close = row.adj_close,stock.volume = row.volume;
+  
+// Create sp500_stock_data
+LOAD CSV WITH HEADERS FROM 'file:///sp500_stock_data.csv' AS row
+MERGE (stocksp500:Stocksp500 {stocksp500ID: row.stock_data_id})
+  ON CREATE SET stocksp500.date_id = row.date_id,stocksp500.open = row.open,stocksp500.high = row.high,stocksp500.low = row.low,stocksp500.close = row.close,stocksp500.adj_close = row.adj_close,stocksp500.volume = row.volume;  
+  
+  // Create calendar_stock
+LOAD CSV WITH HEADERS FROM 'file:///calendar_stock.csv' AS row
+MERGE (date:Date {dateID: row.date_id})
+  ON CREATE SET date.date = row.date;
+  
+  // Create organization
+LOAD CSV WITH HEADERS FROM 'file:///organization.csv' AS row
+MERGE (organization:Organization {organizationID: row.organization_id})
+  ON CREATE SET organization.name = row.name;
+
+// Create index
+CREATE INDEX stock_id FOR (stock:Stock) ON (stock.stockID);
+CREATE INDEX stocksp500_id FOR (stocksp500:Stocksp500) ON (stocksp500.stocksp500ID);
+CREATE INDEX date_id FOR (date:Date) ON (date.dateID);
+CREATE INDEX organization_id FOR (organization:Organization) ON (organization.organizationID);
+
+// Create relationships between calendar_stock and sp500_stock_data
+LOAD CSV WITH HEADERS FROM 'file:///sp500_stock_data.csv' AS row
+MATCH (stocksp500:Stocksp500 {stocksp500ID: row.stock_data_id})
+MATCH (date:Date {dateID: row.date_id})
+MERGE (stocksp500)-[:date_in]->(date);
+
+// Create relationships between calendar_stock and organization_stock_data
+LOAD CSV WITH HEADERS FROM 'file:///organization_stock_data.csv' AS row
+MATCH (stock:Stock {stockID: row.organization_stock_data_id})
+MATCH (date:Date {dateID: row.date_id})
+MERGE (stock)-[:date_in]->(date);
+
+// Create relationships between organization and organization_stock_data
+LOAD CSV WITH HEADERS FROM 'file:///organization_stock_data.csv' AS row
+MATCH (stock:Stock {stockID: row.organization_stock_data_id})
+MATCH (organization:Organization {organizationID: row.organization_id})
+MERGE (stock)-[:price_of]->(organization);
+
+
+# 2. Retail Data
+
+// Create calendar
+LOAD CSV WITH HEADERS FROM 'file:///calendar.csv' AS row
+MERGE (date:Date {dateID: row.date_id})
+  ON CREATE SET date.date = row.date;
+
+
+// Create retail_data_seasonal_adjusted
+LOAD CSV WITH HEADERS FROM 'file:///retail_data.csv' AS row
+MERGE (data:Data {dataID: row.retail_seasonal_adjusted_id})
+  ON CREATE SET data.date_id = row.date_id, data.retail_industry_id = row.retail_industry_id, data.sales = toInteger(row.sales);
+
+
+// Create retail_breakdown_naics_code
+LOAD CSV WITH HEADERS FROM 'file:///retail_naics_code.csv' AS row
+MERGE (code:Code {codeID: row.retail_industry_id})
+  ON CREATE SET code.naics_code = row.naics_code, code.industry_title = row.industry_title;
+
+
+// Create index
+CREATE INDEX date_id FOR (date:Date) ON (date.dateID);
+CREATE INDEX data_id FOR (data:Date) ON (data.dataID);
+CREATE INDEX code_id FOR (code:Code) ON (code.codeID);
+
+
+// Create relationships between retail_breakdown_naics_code and retail_data_seasonal_adjusted
+LOAD CSV WITH HEADERS FROM 'file:///retail_data.csv' AS row
+MATCH (data:Data {dataID: row.retail_seasonal_adjusted_id})
+MATCH (code:Code {codeID: row.retail_industry_id})
+MERGE (code)-[:sale_amount]->(data);
+
+
+// Create relationships between retail_data_seasonal_adjusted and calendar
+LOAD CSV WITH HEADERS FROM 'file:///retail_data.csv' AS row
+MATCH (data:Data {dataID: row.retail_seasonal_adjusted_id})
+MATCH (date:Date {dateID: row.date_id})
+MERGE (data)-[:date_in]->(date);
+
+
+# 3. Employment Data
+
+LOAD CSV WITH HEADERS FROM "file:///industry_data.csv" AS csvLine
+CREATE (industry:Industry {industry_id: toInt(csvLine.industry_id), industry_title: csvLine.industry_title, naics_code:csvLine.naics_code})
+
+LOAD CSV WITH HEADERS FROM "file:///employment_industry_data.csv" AS csvLine
+MERGE (industry:Industry {industry_title: csvLine.industry_title})
+CREATE (employment:Employment { persons_employed: toInt(csvLine.persons_employed),date: csvLine.date,industry_title:csvLine.industry_title})
+CREATE (employment)-[:Employed_In]->(industry)
+
+MATCH (n:Industry)<- [:Employed_In]-(m:Employment) RETURN n,m LIMIT 50
